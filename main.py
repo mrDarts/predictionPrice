@@ -157,15 +157,7 @@ def neuron_test(namefile):
 
 #create_model()
 #datax, datay = create_data(name)
-#begin_train(name)
+begin_train(name)
 #neuron_test(name)
 
-# create_data(name)
-datax, datay, xybegin = create_data(name)
-datax = datax[0,0,0]
-datay = datay[0]
-datax = convert_from_nuerouns(datax, xybegin[0][0])
-datay = convert_from_nuerouns(datay, xybegin[0][1])
-print(datax[0], len(datax)+len(datay))
-print(datax,datay)
-draw_plot(aldd=datax, needd=datay)
+
