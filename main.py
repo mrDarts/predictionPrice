@@ -1,5 +1,3 @@
-# I'm sorry if you need this read(
-
 import numpy
 import csv
 import pandas as pd
@@ -9,22 +7,23 @@ import matplotlib.pyplot as plt
 
 from keras.utils import plot_model
 from keras.models import Sequential
-from keras.layers import Dense, Flatten, LSTM
+from keras.layers import Dense, Flatten, LSTM, GlobalAveragePooling1D, MaxPooling1D, Dropout
 from keras.layers.convolutional import Conv1D
 
 
 posprice = "<OPEN>"
-indata = 5
-outdata = 3
-sizeepochs = 100
+indata = 512
+outdata = 24
+sizeepochs = 1
 batch = 512
-prefixsaveweight = "convLSTM_"
+prefixsaveweight = "LSTM_"
 istest = True
 isloadweight = False
+isdrawresulttrain = False
 adddelta = 1
 
-name = '/home/mrdarts/Mega/neuronslearn/data/EURUSD_010101_170828.csv'
-nameweights = '/home/mrdarts/Mega/neuronslearn/programm/convLSTM2017823.h'
+name = '/home/mrdarts/Mega/neuronslearn/data/h2014_2017.csv'
+nameweights = '/home/mrdarts/Mega/neuronslearn/programm/predic_LSTM/convLSTM_201796.h'
 
 def add_in_end(begind, endd):
     alld = numpy.empty(len(begind)+len(endd)-1)
@@ -75,15 +74,17 @@ def create_data(namefile):
         for row in reader:
             onedata.append(row[posprice])
 
+    print("last data", onedata[-1])
+
     df = pd.DataFrame(onedata)
     onedata = df.rolling(window=12, min_periods=0).mean().as_matrix()
     onedata = numpy.reshape(onedata, len(onedata))
 
-    size = int(indata+outdata)
-    print('size', size)
-    print(onedata[:size])
-    plt.plot(onedata[:size])
-    plt.show()
+    # size = int(indata+outdata)
+    # print('size', size)
+    # print(onedata[:size])
+    # plt.plot(onedata[:size])
+    # plt.show()
 
     datax = []
     datay = []
@@ -91,14 +92,15 @@ def create_data(namefile):
     for i in range(0, len(onedata) - indata - outdata + 1):
         changx ,firtsx = convert_for_nuerouns(onedata[i:i + indata])
         changy, firtsy = convert_for_nuerouns(onedata[i + indata-1:i + indata + outdata])
-        datax.append([[changx]])
+        datax.append([changx])
+        # datax.append(changx)
         datay.append(changy)
         xybegin.append([firtsx, firtsy])
 
     datax = numpy.array(datax)
     datay = numpy.array(datay)
 
-    #print(datax.shape, datay.shape)
+    print(datax.shape, datay.shape)
     if ((len(datay) != len(datax) and (len(datay) != len(xybegin)))):
         print("wrong size datax, datay, xybegin")
 
@@ -108,11 +110,10 @@ def create_data(namefile):
 def create_model():
 
     model = Sequential()
-    model.add(LSTM())
-    model.add(Flatten())
-    model.add(Dense(512))
-    model.add(Dense(outdata))
-    #model.compile(loss='mean_squared_error', optimizer='adagrad')
+    model.add(LSTM(512,dropout=0.4, recurrent_dropout=0.4, input_shape=(1, indata-1), activation="relu"))
+    model.add(Dense(512, activation="relu"))
+    model.add(Dense(outdata, activation="linear"))
+
     model.compile(loss='mse', optimizer='rmsprop')
 
     return model
@@ -120,7 +121,7 @@ def create_model():
 
 def begin_train(namefile):
 
-    trainx, trainy, fprice = create_data(namefile)
+    trainx, trainy, xybegin = create_data(namefile)
     testx, testy = trainx, trainy
     if(istest):
         sizetrin = int(len(trainx)*0.8)
@@ -134,6 +135,7 @@ def begin_train(namefile):
         model.load_weights(nameweights)
 
     print('begin fit')
+    print(trainx.shape, trainy.shape)
     model.fit(trainx, trainy, epochs=sizeepochs, shuffle=True)
     now = datetime.datetime.now()
     nameweight = prefixsaveweight + str(now.year) + str(now.month) + str(now.day) + '.h'
@@ -141,23 +143,73 @@ def begin_train(namefile):
 
     print('begin evaluate')
     testpredic = model.evaluate(testx, testy)
-
     print("Error test ", testpredic)
+    with open("error.txt", 'a') as errfile:
+        errfile.write('{0}.{1}.{2} error {3}\n'.format(now.year, now.month, now.day, testpredic))
+
+
+    if isdrawresulttrain:
+        pos = 0
+        drawdatain = testx[pos][0]
+        forpredict = testx[pos][0]
+        drawdataout = testy[pos]
+        # print('type drawdatain ', type(drawdatain), drawdatain.shape)
+        forpredict = numpy.reshape(forpredict, (1, 1, indata-1))
+        result = model.predict(forpredict)[0]
+        drawdatain = convert_from_nuerouns(drawdatain, xybegin[pos][0])
+        drawdataout = convert_from_nuerouns(drawdataout, xybegin[pos][1])
+        result = result.tolist()
+        result = convert_from_nuerouns(result, drawdatain[-1])
+        draw_plot(predd=result, aldd=drawdatain, needd=drawdataout)
+
+def predict_test(namefile):
+    testx, testy, xybegin = create_data(namefile)
+    print('create model')
+    model = create_model()
+    model.load_weights(nameweights)
     pos = -1
-    result = model.predict([testx])[pos]
-    result = convert_from_nuerouns()
-    draw_plot(predd=result, aldd=testx[pos], needd=testy[pos])
+    drawdatain = testx[pos][0]
+    forpredict = testx[pos][0]
+    drawdataout = testy[pos]
+    # print('type drawdatain ', type(drawdatain), drawdatain.shape)
+    forpredict = numpy.reshape(forpredict, (1, 1, indata - 1))
+    result = model.predict(forpredict)[0]
+    drawdatain = convert_from_nuerouns(drawdatain, xybegin[pos][0])
+    drawdataout = convert_from_nuerouns(drawdataout, xybegin[pos][1])
+    result = result.tolist()
+    result = convert_from_nuerouns(result, drawdatain[-1])
+    draw_plot(predd=result, aldd=drawdatain, needd=drawdataout)
 
-
-def neuron_test(namefile):
+def predict_last(namefile):
     print("create datas")
-    pass
+    onedata = []
+
+    with open(namefile) as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            onedata.append(row[posprice])
+
+    df = pd.DataFrame(onedata)
+    onedata = df.rolling(window=12, min_periods=0).mean().as_matrix()
+    onedata = numpy.reshape(onedata, len(onedata))
+
+    forpredict,firstin = convert_for_nuerouns(onedata[-indata:])
+    forpredict = numpy.array(forpredict)
+    forpredict = numpy.reshape(forpredict, (1, 1, indata-1))
+
+    print('create model')
+    model = create_model()
+    model.load_weights(nameweights)
+    result = model.predict(forpredict)[0]
+    result = result.tolist()
+    result = convert_from_nuerouns(result, onedata[-1])
+    onedata = onedata.tolist()
+    draw_plot(predd=result, aldd=onedata)
 
 
 
-#create_model()
-#datax, datay = create_data(name)
+# create_model()
+# datax, datay, xybegin = create_data(name)
 begin_train(name)
-#neuron_test(name)
-
-
+# predict_test(name)
+# predict_last(name)
